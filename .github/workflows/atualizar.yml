@@ -1,22 +1,17 @@
 name: Postador TechCrunch Automático
 
 on:
-  workflow_dispatch: # Permite que você aperte um botão para rodar manualmente
+  workflow_dispatch:
   schedule:
-    - cron: '27 12,15,18,21 * * *' # Roda em horários alternados para pegar novidades
+    - cron: '27 12,15,18,21 * * *'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:        # 👈 ADICIONE ESTA LINHA
-      contents: write   # 👈 ADICIONE ESTA LINHA
+    permissions:
+      contents: write
     steps:
-      - name: Baixar o código do repositório
-...
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Baixar o código do repositório
+      - name: Baixar o codigo do repositorio
         uses: actions/checkout@v4
 
       - name: Configurar o Python
@@ -24,19 +19,20 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Instalar dependências
+      - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Executar o Robô do WordPress
+      - name: Executar o Robo do WordPress
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: python bot.py
-        - name: Salvar histórico de postagens
+
+      - name: Salvar historico de postagens
         run: |
           git config --global user.name 'Bot Internacional'
           git config --global user.email 'bot@email.com'
           git add state_wp_intl.json || true
-          git commit -m "🤖 Atualizado histórico de links postados [skip ci]" || true
+          git commit -m "🤖 Atualizado historico de links postados [skip ci]" || true
           git push || true
