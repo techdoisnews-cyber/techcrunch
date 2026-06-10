@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-📰 TECHCRUNCH TO WP AUTOMATION - Versão 1.1 (Edição Tech & AI)
+📰 TECHCRUNCH TO WP AUTOMATION - Versão 1.3 (Edição Oficial Tech2.News)
 Engenharia:
 - Varre as páginas de categorias do TechCrunch e extrai os links das notícias recentes.
 - Captura o conteúdo bruto em inglês, traduz e reescreve o artigo jornalístico em PT-BR.
@@ -26,14 +26,14 @@ import requests
 from bs4 import BeautifulSoup
 
 # ============================================================
-# CONFIGURAÇÕES GERAIS
+# CONFIGURAÇÕES GERAIS (ATUALIZADAS COM SEUS DADOS)
 # ============================================================
 
 CONFIG = {
     "wordpress": {
-        "site_url": "https://tech2.news", # Substitua pelo link do seu novo site
-        "username": "lrodrigues",                         # Substitua pelo seu usuário do WP
-        "app_password": "KrxY UlMo DBil YimH W0Ph l3i8", # Armazenada e tratada automaticamente
+        "site_url": "https://tech2.news", 
+        "username": "lrodrigues",                         
+        "app_password": "KrxY UlMo DBil YimH W0Ph l3i8", 
     },
     
     "techcrunch": {
@@ -47,6 +47,15 @@ CONFIG = {
         "provider": "openrouter",
         "api_key": os.environ.get("OPENROUTER_API_KEY", ""),
         "model": "meta-llama/llama-3.3-70b-instruct:free",
+    },
+
+    "schedule": {
+        "max_posts_per_run": 3, 
+    },
+
+    "fonts": {
+        "title": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "subtitle": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     },
 
     "files": {
@@ -96,17 +105,15 @@ class TechCrunchScraper:
             if r.status_code != 200: return []
             
             soup = BeautifulSoup(r.text, 'html.parser')
-            # Localiza links dentro das tags de post do TechCrunch (padrão loops wp-block / loop arquive)
             for a_tag in soup.find_all('a', href=True):
                 href = a_tag['href']
-                # Filtro para pegar apenas links de posts (contendo ano/mês/dia na estrutura da URL)
                 if re.search(r'/\d{4}/\d{2}/\d{2}/', href):
                     clean_url = href.split('?')[0].split('#')[0]
                     if clean_url not in found_links:
                         found_links.append(clean_url)
         except Exception as e:
             self.logger.error(f"Erro ao descobrir links na categoria: {e}")
-        return found_links[:6] # Retorna as 6 mais recentes encontradas para triagem
+        return found_links[:6]
 
     def extract_article(self, url: str) -> Dict:
         """Coleta o conteúdo textual bruto de dentro da notícia"""
@@ -117,11 +124,9 @@ class TechCrunchScraper:
             
             soup = BeautifulSoup(r.text, 'html.parser')
             
-            # Captura o título H1 da matéria
             title_tag = soup.find('h1')
             title = title_tag.get_text().strip() if title_tag else ""
             
-            # No TechCrunch, o conteúdo principal costuma ficar em blocos com classes de conteúdo ou artigos
             content_div = soup.find('div', class_='entry-content') or soup.find('article')
             
             paragraphs = []
@@ -153,7 +158,6 @@ class WPContentAI:
     def process_and_translate(self, raw_article: Dict) -> Dict:
         api_key = self.cfg["api_key"]
         if not api_key:
-            # Fallback local imediato caso a chave OpenRouter falte
             return {"title": raw_article['title'].upper(), "content": raw_article['content'][:800], "image_prompt": "Technology background"}
 
         prompt_jornalismo = f"""Você é o editor chefe de um portal brasileiro focado em Tecnologia e Inovação.
@@ -188,7 +192,6 @@ Texto Original: {raw_article['content']}"""
         except Exception as e:
             self.logger.warning(f"Falha na esteira de escrita da IA: {e}")
 
-        # Geração do Prompt para a Capa (Featured Image) livre de Copyright
         prompt_imagem = f"""Com base no assunto do título: "{translated_title}", escreva um comando descritivo curto, puramente em inglês, para alimentar uma IA de desenho (Stable Diffusion).
 O comando deve descrever um conceito tecnológico abstrato ou fotografia editorial limpa, realista e moderna, sem textos, letras ou marcas dentro do cenário.
 Exemplo de saída: "A clean minimalist illustration of futuristic glowing neural network links, cybertech style, 8k resolution, professional." """
@@ -221,7 +224,11 @@ class WordPressPublisher:
     def __init__(self, config: Dict, logger: Logger):
         self.cfg = config["wordpress"]
         self.logger = logger
-        # Limpa os espaços da senha de aplicativo para enviar uma string limpa
+        
+        # Garante que o endereço do site termine sem a barra invertida final para evitar rotas quebradas
+        self.base_url = self.cfg["site_url"].rstrip("/")
+        
+        # Limpa espaços e prepara o cabeçalho de autorização nativa do WP
         clean_pass = self.cfg["app_password"].replace(" ", "")
         raw_credential = f"{self.cfg['username']}:{clean_pass}"
         self.auth_header = {"Authorization": f"Basic {base64.b64encode(raw_credential.encode()).decode()}"}
@@ -242,7 +249,7 @@ class WordPressPublisher:
     def upload_media(self, img_bytes: bytes, filename: str) -> Optional[int]:
         """Faz o upload da imagem e retorna o ID de mídia do WordPress"""
         self.logger.info("📤 Enviando imagem gerada para a biblioteca do WordPress...")
-        url = f"{self.cfg['site_url']}/wp-json/wp/v2/media"
+        url = f"{self.base_url}/wp-json/wp/v2/media"
         headers = {**self.auth_header, "Content-Disposition": f"attachment; filename={filename}", "Content-Type": "image/jpeg"}
         try:
             r = requests.post(url, headers=headers, data=img_bytes, timeout=35)
@@ -258,16 +265,15 @@ class WordPressPublisher:
     def create_post(self, title: str, content: str, featured_media_id: Optional[int] = None) -> bool:
         """Publica a matéria completa estruturada no WordPress"""
         self.logger.info("🚀 Transmitindo post definitivo para o banco de dados do WordPress...")
-        url = f"{self.cfg['site_url']}/wp-json/wp/v2/posts"
+        url = f"{self.base_url}/wp-json/wp/v2/posts"
         
-        # Converte quebras de linha em blocos HTML nativos para o editor Gutenberg
         paragraphs = content.split("\n")
         html_content = "".join([f"<p>{p.strip()}</p>" for p in paragraphs if p.strip()])
         
         payload = {
             "title": title,
             "content": html_content,
-            "status": "publish" # Se quiser aprovar antes de ir ao ar, mude para "draft"
+            "status": "publish"
         }
         if featured_media_id:
             payload["featured_media"] = featured_media_id
@@ -318,7 +324,6 @@ class TechCrunchWPBot:
         self.logger.info("🎙️ MOTOR DE POSTS INTERNACIONAIS — AUTOMAÇÃO TECHCRUNCH")
         self.logger.info("=" * 70)
 
-        # Varre as categorias listadas nas configurações
         all_urls = []
         for cat_url in self.config["techcrunch"]["categories"]:
             discovered = self.scraper.discover_links(cat_url)
@@ -337,24 +342,21 @@ class TechCrunchWPBot:
             if posts_executed >= max_posts: break
             if self.state.is_posted(url): continue
 
-            # Executa o oleoduto (Pipeline) para a matéria
             raw_data = self.scraper.extract_article(url)
             if not raw_data or not raw_data.get("content"): continue
 
             processed = self.ai.process_and_translate(raw_data)
             
-            # Etapa Gráfica por IA
             img_bytes = self.publisher.generate_ai_image_bytes(processed["image_prompt"])
             media_id = None
             if img_bytes:
                 media_id = self.publisher.upload_media(img_bytes, f"capa_ai_{int(time.time())}.jpg")
 
-            # Publicação
             success = self.publisher.create_post(processed["title"], processed["content"], media_id)
             if success:
                 self.state.mark_posted(url)
                 posts_executed += 1
-                time.sleep(5) # Intervalo de respiro entre posts
+                time.sleep(5)
 
         self.logger.info("=" * 70)
 
