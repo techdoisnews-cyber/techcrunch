@@ -8,6 +8,13 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:        # 👈 ADICIONE ESTA LINHA
+      contents: write   # 👈 ADICIONE ESTA LINHA
+    steps:
+      - name: Baixar o código do repositório
+...
+  build:
+    runs-on: ubuntu-latest
     steps:
       - name: Baixar o código do repositório
         uses: actions/checkout@v4
@@ -26,3 +33,10 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: python bot.py
+        - name: Salvar histórico de postagens
+        run: |
+          git config --global user.name 'Bot Internacional'
+          git config --global user.email 'bot@email.com'
+          git add state_wp_intl.json || true
+          git commit -m "🤖 Atualizado histórico de links postados [skip ci]" || true
+          git push || true
